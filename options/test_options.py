@@ -16,8 +16,9 @@ class TestOptions(BaseOptions):
         parser.add_argument('--eval', action='store_true', help='use eval mode during test time.')
         parser.add_argument('--num_test', type=int, default=50, help='how many test images to run')
         # rewrite devalue values
-        parser.set_defaults(model='test')
+        parser.set_defaults(model='cycle_gan')
         # To avoid cropping, the load_size should be the same as crop_size
         parser.set_defaults(load_size=parser.get_default('crop_size'))
+        parser.add_argument('--eval_epoch', type=str, default='latest', help='which epoch to load? set to latest to use latest cached model')
         self.isTrain = False
         return parser

@@ -3,7 +3,12 @@ import itertools
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
-
+from focal_frequency_loss import FocalFrequencyLoss as FFL
+from models.psf_blur.psf_blur import PSFBlurGenerator
+from models.loss import PSNRLoss, SSIMLoss
+from models.grl.grl import GRL
+from lpips import LPIPS
+import models.psf_blur.psf_blur as psf_blur
 
 class CycleGANModel(BaseModel):
     """
@@ -57,6 +62,7 @@ class CycleGANModel(BaseModel):
             opt (Option class)-- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
         BaseModel.__init__(self, opt)
+        self.opt = opt
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ["D_A", "G_A", "cycle_A", "idt_A", "D_B", "G_B", "cycle_B", "idt_B"]
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
@@ -77,7 +83,15 @@ class CycleGANModel(BaseModel):
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm, not opt.no_dropout, opt.init_type, opt.init_gain)
-        self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm, not opt.no_dropout, opt.init_type, opt.init_gain)
+        # self.netG_A = GRL(img_size=256, in_channels=opt.input_nc)
+        if opt.psf_blur:
+            self.netG_B = networks.define_G(input_nc=opt.input_nc, output_nc=opt.output_nc, ngf=opt.ngf, netG='psf_blur', norm=opt.norm, use_dropout=not opt.no_dropout, 
+                                            init_type=opt.init_type, init_gain=opt.init_gain, 
+                                            
+                                            psf_downscale_factor=opt.psf_downscale_factor, psf_ksize=opt.psf_ksize, psf_gaussian_blur_mode=opt.psf_gaussian_blur_mode,
+                                            psf_num_kernels=opt.psf_num_kernels, bias=opt.psf_bias)
+        else:
+            self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm, not opt.no_dropout, opt.init_type, opt.init_gain)
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD, opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain)
@@ -91,12 +105,29 @@ class CycleGANModel(BaseModel):
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             self.criterionCycle = torch.nn.L1Loss()
+            self.criterionBlurCoeff = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+            # define focal frequency loss
+            self.criterionFFLA = FFL().to(self.device)
+            self.criterionFFLB = FFL().to(self.device)
+            # define PSNR loss
+            self.criterionReconAPSNR = PSNRLoss().to(self.device)
+            self.criterionReconBPSNR = PSNRLoss().to(self.device)
+            # define SSIM loss
+            self.criterionReconASSIM = SSIMLoss(channel=opt.input_nc).to(self.device)
+            self.criterionReconBSSIM = SSIMLoss(channel=opt.input_nc).to(self.device)
+            # define LPIPS loss
+            self.criterionLPIPS_A = LPIPS(net='vgg').to(self.device)
+            self.criterionLPIPS_A.requires_grad_(False)
+            self.criterionLPIPS_B = LPIPS(net='vgg').to(self.device)
+            self.criterionLPIPS_B.requires_grad_(False)
+            self.gaussian_pyramid = psf_blur.GaussianBlurLayer(
+                num_kernels=4, max_kernel_size=7, channels=opt.input_nc, mode=None).to(self.device)
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -114,8 +145,17 @@ class CycleGANModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG_A(self.real_A)  # G_A(A)
-        self.rec_A = self.netG_B(self.fake_B)  # G_B(G_A(A))
-        self.fake_A = self.netG_B(self.real_B)  # G_B(B)
+        if self.opt.psf_blur:
+            coeffs = self.netG_B.infer_blur_coeffs(self.real_A)
+            self.blurred_clear_fake_B = self.netG_B.infer_blurred_clear(self.fake_B, coeffs)
+            self.blurred_clear_real_B = self.netG_B.infer_blurred_clear(self.real_B, coeffs)
+            self.rec_A = self.netG_B.blur(self.blurred_clear_fake_B)  # G_B(G_A(A))
+            self.fake_A = self.netG_B.blur(self.blurred_clear_real_B)  # G_B(B)
+            # self.rec_A, self.blurred_clear_fake_B = self.netG_B(self.real_A, self.fake_B, self.fake_B)  # G_B(G_A(A))
+            # self.fake_A, self.blurred_clear_real_B = self.netG_B(self.real_A, self.fake_B, self.real_B)  # G_B(B)
+        else:
+            self.rec_A = self.netG_B(self.fake_B)  # G_B(G_A(A))
+            self.fake_A = self.netG_B(self.real_B)  # G_B(B)
         self.rec_B = self.netG_A(self.fake_A)  # G_A(G_B(B))
 
     def backward_D_basic(self, netD, real, fake):
@@ -161,8 +201,12 @@ class CycleGANModel(BaseModel):
             self.idt_A = self.netG_A(self.real_B)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            self.idt_B = self.netG_B(self.real_A)
-            self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
+            if self.opt.psf_blur:
+                self.idt_B = self.netG_B.blur(self.real_A)
+                self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
+            else:
+                self.idt_B = self.netG_B(self.real_A)
+                self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
@@ -172,9 +216,22 @@ class CycleGANModel(BaseModel):
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss || G_B(G_A(A)) - A||
-        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        if self.opt.lpips_loss:
+            self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A * 0.5 + self.criterionLPIPS_A.forward(self.rec_A, self.real_A).mean() * 0.5
+        else:
+            self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        # self.loss_cycle_A += self.criterionFFLA(self.rec_A, self.real_A)
+        # self.loss_cycle_A += self.criterionReconAPSNR(self.rec_A, self.real_A) * 0.01
+        # self.loss_cycle_A += self.criterionReconASSIM(self.rec_A, self.real_A)
         # Backward cycle loss || G_A(G_B(B)) - B||
-        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        if self.opt.lpips_loss:
+            self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B * 0.5 + self.criterionLPIPS_B.forward(self.rec_B, self.real_B).mean() * 0.5
+        else:
+            self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        # self.loss_cycle_B += self.criterionFFLB(self.rec_B, self.real_B)
+        # self.loss_cycle_B += self.criterionReconBPSNR(self.rec_B, self.real_B) * 0.01
+        # self.loss_cycle_B += self.criterionReconBSSIM(self.rec_B, self.real_B)
+
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
         self.loss_G.backward()

@@ -166,3 +166,23 @@ class Visualizer:
         if local_rank == 0:
             with open(self.log_name, "a") as log_file:
                 log_file.write(f"{message}\n")  # save the message
+    
+    def print_current_metrics(self, epoch, ssim, psnr, lpips):
+        """print current evaluation metrics on console; also save the metrics to the disk
+
+        Parameters:
+            epoch (int) -- current epoch
+            ssim (float) -- current SSIM value
+            psnr (float) -- current PSNR value
+            lpips (float) -- current LPIPS value
+        """
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        message = f"[Rank {local_rank}] (epoch: {epoch}) "
+        message += f", SSIM: {ssim:.4f}, PSNR: {psnr:.4f}, LPIPS: {lpips:.4f}"
+        message += "\n"
+        print(message)  # print the message on ALL ranks with rank info
+
+        # Only save to log file on main process (rank 0)
+        if local_rank == 0:
+            with open(self.log_name, "a") as log_file:
+                log_file.write(f"{message}\n")  # save the message

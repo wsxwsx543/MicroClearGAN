@@ -24,6 +24,7 @@ from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
 from util.visualizer import Visualizer
+from evaluate import evaluate
 from util.util import init_ddp, cleanup_ddp
 
 
@@ -38,6 +39,9 @@ if __name__ == "__main__":
     model.setup(opt)  # regular setup: load and print networks; create schedulers
     visualizer = Visualizer(opt)  # create a visualizer that display/save images and plots
     total_iters = 0  # the total number of training iterations
+    best_ssim = 0.0
+    best_psnr = 0.0
+    best_lpips = 1.0
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()  # timer for data loading per iteration
@@ -74,14 +78,23 @@ if __name__ == "__main__":
                 model.save_networks(save_suffix)
 
             iter_data_time = time.time()
-
+        model.epoch = epoch
         model.update_learning_rate()  # update learning rates at the end of every epoch
-
+        ssims, psnrs, lpipss = evaluate(opt.dataroot, opt.data_split_file.replace("train", "test"), model, opt.device, opt.input_nc)
+        if ssims > best_ssim:
+            best_ssim = ssims
+            model.save_networks("best_ssim")
+        if psnrs > best_psnr:
+            best_psnr = psnrs
+            model.save_networks("best_psnr")
+        if lpipss < best_lpips:
+            best_lpips = lpipss
+            model.save_networks("best_lpips")
         if epoch % opt.save_epoch_freq == 0:  # cache our model every <save_epoch_freq> epochs
             print(f"saving the model at the end of epoch {epoch}, iters {total_iters}")
             model.save_networks("latest")
             model.save_networks(epoch)
-
+        visualizer.print_current_metrics(epoch, ssims, psnrs, lpipss)
         print(f"End of epoch {epoch} / {opt.n_epochs + opt.n_epochs_decay} \t Time Taken: {time.time() - epoch_start_time:.0f} sec")
 
     cleanup_ddp()

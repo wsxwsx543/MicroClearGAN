@@ -4,6 +4,8 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
+from models.psf_blur.psf_blur import PSFBlurGenerator
+
 
 ###############################################################################
 # Helper Functions
@@ -129,7 +131,7 @@ def init_net(net, init_type="normal", init_gain=0.02):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm="batch", use_dropout=False, init_type="normal", init_gain=0.02):
+def define_G(input_nc, output_nc, ngf, netG, norm="batch", use_dropout=False, psf_downscale_factor=2, psf_ksize=21, psf_gaussian_blur_mode=None, psf_num_kernels=22, bias=False, init_type="normal", init_gain=0.02):
     """Create a generator
 
     Parameters:
@@ -155,6 +157,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm="batch", use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == "unet_256":
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif netG == "psf_blur":
+        net = PSFBlurGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, bias=bias,
+                               downscale_factor=psf_downscale_factor, ksize=psf_ksize, num_kernels=psf_num_kernels, gaussian_blur_mode=psf_gaussian_blur_mode)
     else:
         raise NotImplementedError("Generator model name [%s] is not recognized" % netG)
     return net
@@ -309,6 +314,30 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type="mixed", const
     else:
         return 0.0, None
 
+
+class ResnetBlurCoefficientGenerator(nn.Module):
+    """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
+
+    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
+    """
+    def __init__(self, input_nc, num_coeff, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type="reflect"):
+        super(ResnetBlurCoefficientGenerator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3),
+            norm_layer(ngf),
+            # nn.MaxPool2d(2),
+            nn.ReLU(inplace=True),
+            *[ResnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=True) for _ in range(n_blocks)],
+            nn.Conv2d(ngf, ngf, kernel_size=1),
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(ngf, num_coeff),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
 
 class ResnetGenerator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
