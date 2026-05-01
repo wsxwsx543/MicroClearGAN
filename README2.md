@@ -30,7 +30,7 @@ The framework supports grayscale and RGB microscopy images and has been validate
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/your-org/MicroClearGAN
+git clone https://github.com/wsxwsx543/MicroClearGAN.git
 cd MicroClearGAN
 ```
 
