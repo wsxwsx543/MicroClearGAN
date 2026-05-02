@@ -51,9 +51,9 @@ This installs PyTorch 2.4, torchvision, scikit-image, Pillow, and W&B.
 
 | Dataset | Download Link | Channels |
 |---|---|---|
-| BBBC006 (W1 & W2) | [Broad Bioimage Benchmark Collection](https://bbbc.broadinstitute.org/BBBC006) | Grayscale |
+| BBBC006 (W1 & W2) | [INSERT LINK HERE] | Grayscale |
 | FocusPath | [INSERT LINK HERE] | RGB |
-| RBC (Ours) | Contact swu469@gatech.edu | RGB |
+| RBC (Ours) | [INSERT LINK HERE] | RGB |
 | Histology | [INSERT LINK HERE] | RGB |
 
 Download each dataset and place the images in a folder accessible on your machine.
