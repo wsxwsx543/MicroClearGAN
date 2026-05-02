@@ -47,6 +47,17 @@ This installs PyTorch 2.4, torchvision, scikit-image, Pillow, and W&B.
 
 ## Dataset Preparation
 
+### Downloading the Datasets
+
+| Dataset | Download Link | Channels |
+|---|---|---|
+| BBBC006 (W1 & W2) | [Broad Bioimage Benchmark Collection](https://bbbc.broadinstitute.org/BBBC006) | Grayscale |
+| FocusPath | [INSERT LINK HERE] | RGB |
+| RBC (Ours) | Contact swu469@gatech.edu | RGB |
+| Histology | [INSERT LINK HERE] | RGB |
+
+Download each dataset and place the images in a folder accessible on your machine.
+
 The model uses a **split file** (`.txt`) to pair blurry (domain A) and sharp (domain B) image paths. Each line is tab-separated:
 
 ```
