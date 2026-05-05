@@ -1,4 +1,3 @@
-Here it is — select all of this and paste it directly into your README.md:
 # µClearGAN: A Blurriness Level Guided GAN for Unsupervised Microscopic Image Deblurring
 
 > Accepted at the **48th Annual IEEE EMBC 2026** · Toronto, Canada  
