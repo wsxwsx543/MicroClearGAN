@@ -242,9 +242,3 @@ If you use this code, please cite our paper:
 ## Acknowledgments
 
 This project builds on [pytorch-CycleGAN-and-pix2pix](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix) by Jun-Yan Zhu and Taesung Park. Research conducted at Uncommon Sense Labs.
-
----
-
-## Acknowledgments
-
-This project builds on [pytorch-CycleGAN-and-pix2pix](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix) by Jun-Yan Zhu and Taesung Park. Research conducted at Uncommon Sense Labs.
