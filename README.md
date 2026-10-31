@@ -59,10 +59,10 @@ The datasets are not included in this repository and must be downloaded separate
 
 | Dataset | Download Link | Channels |
 |---|---|---|
-| BBBC006 (W1 & W2) | [Broad Bioimage Benchmark Collection](https://bbbc.broadinstitute.org/BBBC006) | Grayscale |
-| FocusPath | [INSERT LINK HERE] | RGB |
-| RBC (Ours) | [INSERT LINK HERE] | RGB |
-| Histology | [INSERT LINK HERE] | RGB |
+| BBBC006 (W1 & W2) | Grayscale |
+| FocusPath | RGB |
+| RBC (Ours)| RGB |
+| Histology | RGB |
 
 ### Setting Up Split Files
 
